@@ -1,200 +1,156 @@
-import torch
-from torch.optim import Adam
-import numpy as np
-from textwrap import dedent
+import sys
 import gym
+from textwrap import dedent
 from copy import deepcopy
-import time
-from functools import reduce
-from utils import setup_logger_kwargs, ReplayBuffer, EpochLogger
-from model import MLPActorCritic, count_vars
-from config import devices
+from numpy.lib.shape_base import expand_dims
+
+import algorithm
+from experiment_grid import ExperimentGrid
+# from algddpg.algorithm import ddpg
+
+SUBSTITUTIONS = {
+    'env': 'env_name',
+    'hid': 'ac_kwargs:hidden_sizes',
+    'act': 'ac_kwargs:activation',
+    'cpu': 'num_cpu',
+    'dt': 'datestamp'
+}
+RUN_KEYS = ['num_cpu', 'data_dir', 'datestamp']
+
+# Only some algorithms can be parallelized (have num_cpu > 1):
+MPI_COMPATIBLE_ALGOS = ['vpg', 'trpo', 'ppo']
 
 
-def ddpg(env_fn,
-         actor_critc=MLPActorCritic,
-         ac_kwargs=dict(),
-         seed=0,
-         steps_per_epoch=4000,
-         epochs=100,
-         replay_size=int(1e4),
-         gamma=0.99,
-         polyak=0.995,
-         pi_lr=1e-3,
-         q_lr=1e-3,
-         batch_size=100,
-         start_steps=10000,
-         update_after=1000,
-         update_every=50,
-         act_noise=0.1,
-         num_test_episodes=10,
-         max_ep_len=1000,
-         logger_kwargs=dict(),
-         save_freq=1):
-    """
-    主要参数：
-        polyak(float): 参数软更新时的\\rho
-    """
-    # 实例化log
-    logger = EpochLogger(**logger_kwargs)
-    logger.save_config(locals())
-    #设置随机数种子
-    torch.manual_seed(seed)
-    np.random.seed(seed)
+def add_with_backends(algo_list):
+    # helper function to build lists with backend-specific function names
+    algo_list_with_backends = deepcopy(algo_list)
+    for algo in algo_list:
+        algo_list_with_backends += [algo + '_tf1', algo + '_pytorch']
+    return algo_list_with_backends
 
-    env, test_env = env_fn(), env_fn()
-    obs_dim = env.observation_space.shape
-    act_dim = env.action_space.shape[0]
-    act_limit = env.action_space.high[0]
-    # print(obs_dim)
-    # print(act_dim)
-    # print(act_limit)
-    ac = actor_critc(env.observation_space, env.action_space, **ac_kwargs).to(devices)
-    ac_targ = deepcopy(ac).to(devices)
 
-    for p in ac_targ.parameters():
-        p.requires_grad = False
+def friendly_error(err_msg):
+    return "\n\n" + err_msg + "\n\n"
 
-    replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
-    # print("replay_buffer.obs_buf.shape", replay_buffer.obs_buf.shape)
-    # print("replay_buffer.act_buf.shape", replay_buffer.act_buf.shape)
-    var_counts = tuple(count_vars(module) for module in [ac.pi, ac.q])
-    logger.log('\nNumber of parameters: \t pi: %d, \t q: %d\n' % var_counts)
 
-    def compute_loss_q(data):
-        o, a, r, o2, d = data['obs'].to(devices), data['act'].to(devices), \
-            data['rew'].to(devices), data['obs2'].to(devices), data['done'].to(devices)
-        # 这里有一些环境的观察是图片， 所以把观察展平成向量
-        # print("o.shape,a.shape: ", o.size(), a.shape)
-        q = ac.q(o, a)
-        with torch.no_grad():
-            a2 = ac_targ.pi(o2).to(devices)
-            q_pi_targ = ac_targ.q(o2, a2)
-            backup = r + gamma * (1 - d) * q_pi_targ
-        loss_q = ((q - backup)**2).mean()
-        loss_info = dict(QVals=q.detach().cpu().numpy()) if devices.type=='cuda' \
-            else dict(QVals=q.detach().numpy())
-        return loss_q, loss_info
+def process_args(alg, args):
+    def process(arg):
+        """
+        使用eval函数处理参数, 使得传参可以传递函数.
+        """
+        try:
+            return eval(arg)
+        except:
+            return arg
 
-    def compute_loss_pi(data):
-        o = data['obs'].to(devices)
-        a = ac.pi(o).to(devices)
-        q_pi = ac.q(o, a)
-        return -q_pi.mean()
-
-    pi_optimizer = Adam(ac.pi.parameters(), lr=pi_lr)
-    q_optimizer = Adam(ac.q.parameters(), lr=q_lr)
-    logger.setup_pytorch_saver(ac)
-
-    def update(data):
-        # 首先对Q执行一步梯度下降
-        q_optimizer.zero_grad()
-        loss_q, loss_info = compute_loss_q(data)
-        loss_q.backward()
-        q_optimizer.step()
-        # print("loss_q, loss_info", loss_q, loss_info)
-
-        # 冻结Q网络， 提高计算效率
-        for p in ac.q.parameters():
-            p.requires_grad = False
-
-        # 对pi执行一步梯度下降
-        pi_optimizer.zero_grad()
-        loss_pi = compute_loss_pi(data)
-        loss_pi.backward()
-        pi_optimizer.step()
-
-        # 解冻Q参数
-        for p in ac.q.parameters():
-            p.requires_grad = True
-
-        logger.store(LossQ=loss_q.item(), LossPi=loss_pi.item(), **loss_info)
-
-        # 最后软更新目标网络参数
-        with torch.no_grad():
-            for p, p_targ in zip(ac.parameters(), ac_targ.parameters()):
-                # NB: We use an in-place operations "mul_", "add_" to update target
-                # params, as opposed to "mul" and "add", which would make new tensors.
-                p_targ.data.mul_(polyak)
-                p_targ.data.add_((1 - polyak) * p.data)
-
-    def get_action(o, noise_scale):
-        o = torch.as_tensor(o.copy(), dtype=torch.float32).unsqueeze(0).to(devices)
-        a = ac.act(o)
-        print("get action", a)
-        a += noise_scale * np.random.randn(act_dim)
-        return np.clip(a, -act_limit, act_limit)
-
-    def test_agent():
-        for j in range(num_test_episodes):
-            o, d, ep_ret, ep_len = test_env.reset(), False, 0, 0
-            while not (d or (ep_len == max_ep_len)):
-                print(get_action(o, 0))
-                o, r, d, _ = test_env.step(get_action(o, 0))
-                ep_ret += r
-                ep_len += 1
-            logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
-
-    total_steps = steps_per_epoch * epochs
-    start_time = time.time()
-    o, ep_ret, ep_len = env.reset(), 0, 0
-
-    for t in range(total_steps):
-        if t > start_steps:
-            a = get_action(o, act_noise)
+    arg_dict = dict()
+    arg_key = ""
+    for i, arg in enumerate(args):
+        assert i > 0 or '--' in arg, friendly_error("You didn't specify a first flag.")
+        if '--' in arg:
+            arg_key = arg.lstrip('-')
+            arg_dict[arg_key] = []
         else:
-            a = env.action_space.sample()
+            arg_dict[arg_key].append(process(arg))
 
-        o2, r, d, _ = env.step(a)
-        ep_ret += r
-        ep_len += 1
+    for k, v in arg_dict.items():
+        if len(v) == 0:
+            v.append(True)
 
-        d = False if ep_len == max_ep_len else d
-        replay_buffer.store(o, a, r, o2, d)
-        o = o2
-        if d or (ep_len == max_ep_len):
-            logger.store(EpRet=ep_ret, EpLen=ep_len)
-            o, ep_ret, ep_len = env.reset(), 0, 0
-        if t >= update_after and t % update_every == 0:
-            for _ in range(update_every):
-                batch = replay_buffer.sample_batch(batch_size)
-                update(data=batch)
-        if (t + 1) % steps_per_epoch == 0:
-            epoch = (t + 1) / steps_per_epoch
-            if (epoch % save_freq == 0) or (epoch == epochs):
-                logger.save_state({'env', env}, None)
-            test_agent()
+    given_shorhands = dict()
+    fixed_keys = list(arg_dict.keys())
+    for k in fixed_keys:
+        p1, p2 = k.find('['), k.find(']')
+        if p1 >= 0 and p2 >= 0:
+            k_new = k[:p1]
+            shorthand = k[p1 + 1:p2]
+            given_shorhands[k_new] = shorthand
+            arg_dict[k_new] = arg_dict[k]
+            del arg_dict[k]
+    # 允许简称传递参数, 比如"env"代表"env_name"
+    for special_name, true_name in SUBSTITUTIONS.items():
+        if special_name in arg_dict:
+            arg_dict[true_name] = arg_dict[special_name]
+            del arg_dict[special_name]
+        if special_name in given_shorhands:
+            given_shorhands[true_name] = given_shorhands[special_name]
+            del given_shorhands[special_name]
+    # 为了进行网格调参,把参数离散化
+    run_kwargs = dict()
+    for k in RUN_KEYS:
+        if k in arg_dict:
+            val = arg_dict[k]
+            assert len(val) == 1, friendly_error("You can only provide one value for %s." % k)
+            run_kwargs[k] = val[0]
+            del arg_dict[k]
+    # 确定实验名称
+    if 'exp_name' in arg_dict:
+        assert len(arg_dict['exp_name']) == 1, friendly_error("只能给定一个名字.")
+        exp_name = arg_dict['exp_name'][0]
+        del arg_dict['exp_name']
+    else:
+        exp_name = "cmd_" + alg
+    # 并行执行参数, ddpg算法不需要,为了以后复制方便这里写上
+    if "num_cpu" in run_kwargs and not (run_kwargs['num_cpu'] == 1):
+        assert alg in add_with_backends(MPI_COMPATIBLE_ALGOS), friendly_error("该算法不支持并行训练")
 
-            logger.log_tabular('Epoch', epoch)
-            logger.log_tabular('EpRet', with_min_and_max=True)
-            logger.log_tabular('TestEpRet', with_min_and_max=True)
-            logger.log_tabular('EpLen', average_only=True)
-            logger.log_tabular('TestEpLen', average_only=True)
-            logger.log_tabular('TotalEnvInteracts', t)
-            logger.log_tabular('QVals', with_min_and_max=True)
-            logger.log_tabular('LossPi', average_only=True)
-            logger.log_tabular('LossQ', average_only=True)
-            logger.log_tabular('time', time.time() - start_time)
-            logger.dump_tabular()
+    valid_envs = [e.id for e in list(gym.envs.registry.all())]
+    assert "env_name" in arg_dict, friendly_error("You did not give a value for --env_name!")
+    for env_name in arg_dict['env_name']:
+        err_msg = dedent("""
+
+            %s is not registered with Gym.
+
+            Recommendations:
+
+                * Check for a typo (did you include the version tag?)
+
+                * View the complete list of valid Gym environments at
+
+                    https://gym.openai.com/envs/
+
+            """ % env_name)
+        assert env_name in valid_envs, err_msg
+    return exp_name, arg_dict, run_kwargs, given_shorhands
+
+
+def run_grid_search(alg, args):
+    """
+    网格调参
+    """
+
+    run_alg = eval(alg)
+
+    exp_name, arg_dict, run_kwargs, given_shorhands = process_args(alg, args)
+    # print(run_kwargs, given_shorhands)
+    eg = ExperimentGrid(name=exp_name)
+    for k, v in arg_dict.items():
+        eg.add(k, v, shorthand=given_shorhands.get(k))
+    # print(eg.variants())
+    eg.run(run_alg, **run_kwargs)
 
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='CarRacing-v0', help="环境名称")
-    parser.add_argument('--hid', type=int, default=256, help="模型隐藏层神经元数量")
-    parser.add_argument('--l', type=int, default=2, help="模型层数")
-    parser.add_argument('--gamma', type=float, default=0.99, help="折扣因子")
-    parser.add_argument('--seed', type=int, default=0, help="随机数种子")
-    parser.add_argument('--epochs', type=int, default=50, help="回合数")
-    parser.add_argument('--exp_name', type=str, default='ddpg', help="实验名称")
-    args = parser.parse_args()
-
-    logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
-    ddpg(lambda: gym.make(args.env),
-         actor_critc=MLPActorCritic,
-         ac_kwargs=dict(hidden_sizes=[args.hid] * args.l),
-         gamma=args.gamma,
-         seed=args.seed,
-         epochs=args.epochs,
-         logger_kwargs=logger_kwargs)
+    """
+    python -m spinup.run ppo --exp_name ppo_ant --env Ant-v2 --clip_ratio 0.1 0.2
+        --hid[h] [32,32] [64,32] --act torch.nn.Tanh --seed 0 10 20 --dt
+        --data_dir path/to/data
+    """
+    run_type = sys.argv[2]
+    if run_type == "train":
+        # 网格搜索超参训练
+        cmd = """
+            python run.py --exp_name ddpg_CarRacing --env CarRacing-v0 
+                --seed 0 20 --data_dir data
+            """
+        cmd = cmd.strip().split()
+        args = cmd[2:]
+        alg = "algorithm.ddpg"
+        run_grid_search(alg, args)
+    elif run_type == "plot":
+        pass
+    elif run_type == "test":
+        pass
+    else:
+        friendly_error("参数错误!")
+        exit()

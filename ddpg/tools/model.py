@@ -3,7 +3,7 @@ import scipy.signal
 import torch
 import torch.nn as nn
 from functools import reduce
-from config import devices
+from .config import devices
 
 
 def count_vars(module):

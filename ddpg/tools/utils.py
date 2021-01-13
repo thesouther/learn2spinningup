@@ -8,9 +8,9 @@ import torch
 import tensorflow as tf
 import warnings
 
-from config import FORCE_DATESTAMP, DEFAULT_DATA_DIR
-from json_utils import convert_json
-from mpi_utils import proc_id, mpi_statistics_scalar
+from .config import FORCE_DATESTAMP, DEFAULT_DATA_DIR
+from .json_utils import convert_json
+from .mpi_utils import proc_id, mpi_statistics_scalar
 
 color2num = dict(gray=30, red=31, green=32, yellow=33, blue=34, magenta=35, cyan=36, white=37, crimson=38)
 

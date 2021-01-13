@@ -1,12 +1,14 @@
+import subprocess
 import sys
 import gym
 from textwrap import dedent
 from copy import deepcopy
 from numpy.lib.shape_base import expand_dims
+import os
+import os.path as osp
 
 import algorithm
 from experiment_grid import ExperimentGrid
-# from algddpg.algorithm import ddpg
 
 SUBSTITUTIONS = {
     'env': 'env_name',
@@ -137,18 +139,26 @@ if __name__ == "__main__":
         --data_dir path/to/data
     """
     run_type = sys.argv[2]
+    exp = sys.argv[4]
     if run_type == "train":
         # 网格搜索超参训练
         cmd = """
-            python run.py --exp_name ddpg_CarRacing --env CarRacing-v0 
-                --seed 0 20 --data_dir data
-            """
+            python run.py --exp_name %s_CarRacing --env CarRacing-v0 
+                --seed 0 20 --data_dir data --dt
+            """ % (exp)
         cmd = cmd.strip().split()
         args = cmd[2:]
-        alg = "algorithm.ddpg"
+        alg = "algorithm.%s" % exp
         run_grid_search(alg, args)
     elif run_type == "plot":
-        pass
+        runfile = osp.join(osp.abspath(osp.dirname(__file__)), "plot.py")
+
+        cmd = """
+            python run.py plot data/ --savedir=results
+            """
+        cmd = cmd.strip().split()
+        args = [sys.executable if sys.executable else "python", runfile] + cmd[3:]
+        subprocess.check_call(args, env=os.environ)
     elif run_type == "test":
         pass
     else:

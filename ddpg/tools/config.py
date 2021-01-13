@@ -2,7 +2,7 @@ import os, sys
 import os.path as osp
 import torch
 # 数据和log文件地址
-DEFAULT_DATA_DIR = osp.join(osp.abspath(osp.dirname(osp.dirname(__file__))), 'ddpg', 'data')
+DEFAULT_DATA_DIR = osp.join(osp.abspath(osp.dirname(osp.dirname(__file__))), 'data')
 # 是否在log文件名后加时间戳
 FORCE_DATESTAMP = True
 #使用网格法调参时， 是否使用shorthand

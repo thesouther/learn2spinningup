@@ -90,7 +90,7 @@ class Logger:
                 os.makedirs(self.output_dir)
             self.output_file = open(osp.join(self.output_dir, output_fname), 'w')
             atexit.register(self.output_file.close)
-            print(colorize("logging data to %s" % self.output_file.name, 'green', bold=True))
+            print(colorize("Logging data to %s" % self.output_file.name, 'green', bold=True))
         else:
             self.output_dir = None
             self.output_file = None
@@ -130,7 +130,7 @@ class Logger:
             output = json.dumps(config_json, separators=(',', ':\t'), indent=4, sort_keys=True)
             print(colorize('Saving config:\n', color='cyan', bold=True))
             print(output)
-            with open(osp.join(self.output_dir, 'config.json'), 'w') as out:
+            with open(osp.join(self.output_dir, "config.json"), 'w') as out:
                 out.write(output)
 
     def save_state(self, state_dict, itr=None):
@@ -144,7 +144,7 @@ class Logger:
             except:
                 self.log('Warning: could not pickle state_dict.', color='red')
             if hasattr(self, 'tf_saver_elements'):
-                self._tf.simple_save(itr)
+                self._tf_simple_save(itr)
             if hasattr(self, 'pytorch_saver_elements'):
                 self._pytorch_simple_save(itr)
 
@@ -175,8 +175,8 @@ class Logger:
 
     def _pytorch_simple_save(self, itr=None):
         if proc_id() == 0:
-            assert hasattr(
-                self, 'pytorch_saver_elements'), "First have to setup saving with self.setup_pytorch_saver"
+            assert hasattr(self, 'pytorch_saver_elements'),\
+                     "First have to setup saving with self.setup_pytorch_saver"
             fpath = 'pyt_save'
             fpath = osp.join(self.output_dir, fpath)
             fname = 'model' + ('%d' % itr if itr is not None else '') + '.pt'
@@ -195,7 +195,7 @@ class Logger:
             key_lens = [len(key) for key in self.log_headers]
             max_key_len = max(15, max(key_lens))
             keystr = '%' + '%d' % max_key_len
-            fmt = '| ' + keystr + 's|%15s |'
+            fmt = "| " + keystr + "s | %15s |"
             n_slashes = 22 + max_key_len
             print("-" * n_slashes)
             for key in self.log_headers:
@@ -203,11 +203,11 @@ class Logger:
                 valstr = "%8.3g" % val if hasattr(val, "__float__") else val
                 print(fmt % (key, valstr))
                 vals.append(val)
-            print('-' * n_slashes, flush=True)
+            print("-" * n_slashes, flush=True)
             if self.output_file is not None:
                 if self.first_row:
-                    self.output_file.write("\t".join(self.log_headers) + '\n')
-                self.output_file.write("\t".join(map(str, vals)) + '\n')
+                    self.output_file.write("\t".join(self.log_headers) + "\n")
+                self.output_file.write("\t".join(map(str, vals)) + "\n")
                 self.output_file.flush()
         self.log_current_row.clear()
         self.first_row = False
@@ -249,6 +249,3 @@ class EpochLogger(Logger):
         v = self.epoch_dict[key]
         vals = np.concatenate(v) if isinstance(v[0], np.ndarray) and len(v[0].shape) > 0 else v
         return mpi_statistics_scalar(vals)
-
-
-# class EpochLogger(Logger):

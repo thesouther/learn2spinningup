@@ -142,9 +142,11 @@ if __name__ == "__main__":
     exp = sys.argv[4]
     if run_type == "train":
         # 网格搜索超参训练
+        # CarRacing-v0
+        # LunarLander-v2
         cmd = """
-            python run.py --exp_name %s_CarRacing --env CarRacing-v0 
-                --seed 0 20 --data_dir data --dt
+            python run.py --exp_name %s_Pendulum --env Pendulum-v0 
+                --seed 0 --data_dir data --dt
             """ % (exp)
         cmd = cmd.strip().split()
         args = cmd[2:]
@@ -152,15 +154,24 @@ if __name__ == "__main__":
         run_grid_search(alg, args)
     elif run_type == "plot":
         runfile = osp.join(osp.abspath(osp.dirname(__file__)), "plot.py")
-
         cmd = """
-            python run.py plot data/ --savedir=results
+            python plot.py --savedir=results
+            data/
             """
         cmd = cmd.strip().split()
-        args = [sys.executable if sys.executable else "python", runfile] + cmd[3:]
+        args = [sys.executable if sys.executable else "python", runfile] + cmd[2:]
         subprocess.check_call(args, env=os.environ)
     elif run_type == "test":
-        pass
+        runfile = osp.join(osp.abspath(osp.dirname(__file__)), "test_policy.py")
+        cmd = """
+            python test_policy.py /home/user/pro/mygithub/learn2spinningup/data/2021-01-13_ddpg_Pendulum
+            --norender --episodes=100 --len=1000
+            """
+        cmd = cmd.strip().split()
+        args = [sys.executable if sys.executable else "python", runfile] + cmd[2:]
+        subprocess.check_call(args, env=os.environ)
     else:
         friendly_error("参数错误!")
         exit()
+
+# 9556

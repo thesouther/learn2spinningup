@@ -32,6 +32,26 @@ def ddpg(env_fn,
          max_ep_len=1000,
          logger_kwargs=dict(),
          save_freq=1):
+    # def ddpg(env_fn,
+    #  actor_critc=MLPActorCritic,
+    #  ac_kwargs=dict(),
+    #  seed=0,
+    #  steps_per_epoch=50,
+    #  epochs=5,
+    #  replay_size=int(1e4),
+    #  gamma=0.99,
+    #  polyak=0.995,
+    #  pi_lr=1e-3,
+    #  q_lr=1e-3,
+    #  batch_size=10,
+    #  start_steps=10,
+    #  update_after=10,
+    #  update_every=5,
+    #  act_noise=0.1,
+    #  num_test_episodes=10,
+    #  max_ep_len=50,
+    #  logger_kwargs=dict(),
+    #  save_freq=1):
     """
     主要参数：
         polyak(float): 参数软更新时的\\rho
@@ -121,6 +141,9 @@ def ddpg(env_fn,
                 p_targ.data.add_((1 - polyak) * p.data)
 
     def get_action(o, noise_scale):
+        """
+        网络输出, 这里的action得减一维
+        """
         o = torch.as_tensor(o.copy(), dtype=torch.float32).unsqueeze(0).to(devices)
         a = ac.act(o)
         a += noise_scale * np.random.randn(act_dim)
@@ -160,9 +183,9 @@ def ddpg(env_fn,
                 batch = replay_buffer.sample_batch(batch_size)
                 update(data=batch)
         if (t + 1) % steps_per_epoch == 0:
-            epoch = (t + 1) / steps_per_epoch
+            epoch = (t + 1) // steps_per_epoch
             if (epoch % save_freq == 0) or (epoch == epochs):
-                logger.save_state({'env', env}, None)
+                logger.save_state({'env': env}, None)
             test_agent()
 
             logger.log_tabular('Epoch', epoch)
@@ -174,7 +197,7 @@ def ddpg(env_fn,
             logger.log_tabular('QVals', with_min_and_max=True)
             logger.log_tabular('LossPi', average_only=True)
             logger.log_tabular('LossQ', average_only=True)
-            logger.log_tabular('time', time.time() - start_time)
+            logger.log_tabular('Time', time.time() - start_time)
             logger.dump_tabular()
 
 
@@ -183,11 +206,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--run', type=str, default='train', help="[train, plot, test]")
     parser.add_argument('--env', type=str, default='CarRacing-v0', help="环境名称")
-    parser.add_argument('--hid', type=list, default=[256, 256], help="模型隐藏层神经元数量")
+    parser.add_argument('--hid', type=list, default=[128, 128], help="模型隐藏层神经元数量")
     parser.add_argument('--l', type=int, default=2, help="模型层数")
     parser.add_argument('--gamma', type=float, default=0.99, help="折扣因子")
     parser.add_argument('--seed', type=int, default=0, help="随机数种子")
-    parser.add_argument('--epochs', type=int, default=50, help="回合数")
+    parser.add_argument('--epochs', type=int, default=5, help="回合数")
     parser.add_argument('--exp_name', type=str, default='ddpg', help="实验名称")
     args = parser.parse_args()
 

@@ -14,6 +14,6 @@ else
     type=$1 
     proc=$2
     echo "执行程序: python $proc/run.py $1"
-    xvfb-run -s "-screen 0 640x480x24" python  $proc/run.py --run_type $1 --alg $2
+    xvfb-run -a -s "-screen 0 640x480x24" python  $proc/run.py --run_type $1 --alg $2
 fi
-# bash ./run.sh train ddpg
+# nohup bash ./run.sh train ddpg > runlog.log 2>&1 &

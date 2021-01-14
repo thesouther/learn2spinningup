@@ -122,7 +122,7 @@ class ExperimentGrid:
         self.name(name)
 
     def name(self, _name):
-        assert isinstance(_name, str), "Name has to ben a string"
+        assert isinstance(_name, str), "Name has to be a string."
         self._name = _name
 
     def print(self):
@@ -172,7 +172,7 @@ class ExperimentGrid:
         sh = "-".join([shear(x) for x in key.split(":")])
         return sh
 
-    def add(self, key, vals, shorthand=None, in_name=None):
+    def add(self, key, vals, shorthand=None, in_name=False):
         """
         Add a parameter (key) to the grid config, with potential values (vals).
         Args:
@@ -212,7 +212,7 @@ class ExperimentGrid:
                 return v[k]
             else:
                 splits = k.split(":")
-                k0, k1 = splits[0], "".join(splits[1])
+                k0, k1 = splits[0], ":".join(splits[1:])
                 return get_val(v[k0], k1)
 
         var_name = self._name
@@ -335,7 +335,7 @@ class ExperimentGrid:
                               leave=False,
                               ncols=DIV_LINE_WIDTH,
                               mininterval=0.25,
-                              bar_format="{desc}:{bar}|{remaining} {elapsed}")
+                              bar_format="{desc}: {bar}| {remaining} {elapsed}")
             for _ in prog_bar:
                 time.sleep(wait / steps)
         for var in variants:

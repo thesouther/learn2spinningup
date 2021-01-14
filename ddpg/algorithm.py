@@ -8,50 +8,50 @@ import time
 from functools import reduce
 
 from tools.utils import setup_logger_kwargs, ReplayBuffer, EpochLogger
-from tools.model import MLPActorCritic, count_vars
+from model import MLPActorCritic, count_vars
 from tools.config import devices
 
 
+# def ddpg(env_fn,
+#          actor_critc=MLPActorCritic,
+#          ac_kwargs=dict(),
+#          seed=0,
+#          steps_per_epoch=4000,
+#          epochs=100,
+#          replay_size=int(1e4),
+#          gamma=0.99,
+#          polyak=0.995,
+#          pi_lr=1e-3,
+#          q_lr=1e-3,
+#          batch_size=100,
+#          start_steps=10000,
+#          update_after=1000,
+#          update_every=50,
+#          act_noise=0.1,
+#          num_test_episodes=10,
+#          max_ep_len=1000,
+#          logger_kwargs=dict(),
+#          save_freq=1):
 def ddpg(env_fn,
          actor_critc=MLPActorCritic,
          ac_kwargs=dict(),
          seed=0,
-         steps_per_epoch=4000,
-         epochs=100,
+         steps_per_epoch=50,
+         epochs=5,
          replay_size=int(1e4),
          gamma=0.99,
          polyak=0.995,
          pi_lr=1e-3,
          q_lr=1e-3,
-         batch_size=100,
-         start_steps=10000,
-         update_after=1000,
-         update_every=50,
+         batch_size=10,
+         start_steps=10,
+         update_after=10,
+         update_every=5,
          act_noise=0.1,
          num_test_episodes=10,
-         max_ep_len=1000,
+         max_ep_len=50,
          logger_kwargs=dict(),
          save_freq=1):
-    # def ddpg(env_fn,
-    #  actor_critc=MLPActorCritic,
-    #  ac_kwargs=dict(),
-    #  seed=0,
-    #  steps_per_epoch=50,
-    #  epochs=5,
-    #  replay_size=int(1e4),
-    #  gamma=0.99,
-    #  polyak=0.995,
-    #  pi_lr=1e-3,
-    #  q_lr=1e-3,
-    #  batch_size=10,
-    #  start_steps=10,
-    #  update_after=10,
-    #  update_every=5,
-    #  act_noise=0.1,
-    #  num_test_episodes=10,
-    #  max_ep_len=50,
-    #  logger_kwargs=dict(),
-    #  save_freq=1):
     """
     主要参数：
         polyak(float): 参数软更新时的\\rho

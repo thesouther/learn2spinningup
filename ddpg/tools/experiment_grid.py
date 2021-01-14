@@ -13,10 +13,10 @@ from subprocess import CalledProcessError
 import cloudpickle
 import base64
 import zlib
-from tools.utils import colorize, setup_logger_kwargs
-from tools.json_utils import convert_json
-from tools.config import DEFAULT_SHORTHAND, WAIT_BEFORE_LAUNCH
-from tools.mpi_utils import mpi_fork
+from .utils import colorize, setup_logger_kwargs
+from .json_utils import convert_json
+from .config import DEFAULT_SHORTHAND, WAIT_BEFORE_LAUNCH
+from .mpi_utils import mpi_fork
 
 DIV_LINE_WIDTH = 80
 
@@ -52,7 +52,8 @@ def call_experiment(exp_name, thunk, seed=0, num_cpu=1, data_dir=None, datestamp
     # thunk_plus()
     pickled_thunk = cloudpickle.dumps(thunk_plus)
     encoded_thunk = base64.b64encode(zlib.compress(pickled_thunk)).decode("utf-8")
-    entrypoint = osp.join(osp.abspath(osp.dirname(__file__)), "run_entrypoint.py")
+    # 获取上一层目录下的 run_entrypoint.py 文件
+    entrypoint = osp.join(osp.abspath(osp.dirname(osp.dirname(__file__))), "run_entrypoint.py")
     cmd = [sys.executable if sys.executable else 'python', entrypoint, encoded_thunk]
     try:
         subprocess.check_call(cmd, env=os.environ)

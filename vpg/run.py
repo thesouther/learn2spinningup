@@ -145,8 +145,8 @@ if __name__ == "__main__":
         # CarRacing-v0
         # LunarLander-v2
         cmd = """
-            python run.py --exp_name %s_Pendulum --env Pendulum-v0 
-                --seed 0 --data_dir data --dt
+            python run.py --exp_name %s_Pendulum1 --env Pendulum-v0
+                --seed 0 --data_dir data --dt --num_cpu 2
             """ % (exp)
         cmd = cmd.strip().split()
         args = cmd[2:]
@@ -156,7 +156,7 @@ if __name__ == "__main__":
         runfile = osp.join(osp.abspath(osp.dirname(__file__)), "tools", "plot.py")
         cmd = """
             python plot.py --savedir=results
-            data/2021
+            data/2021-01-20_vpg_Pendulum1
             """
         cmd = cmd.strip().split()
         args = [sys.executable if sys.executable else "python", runfile] + cmd[2:]
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     elif run_type == "test":
         runfile = osp.join(osp.abspath(osp.dirname(__file__)), "test_policy.py")
         cmd = """
-            python test_policy.py /home/user/pro/mygithub/learn2spinningup/data/2021-01-14_ddpg_Pendulum/2021-01-14_23-07-19-ddpg_Pendulum_s0
+            python test_policy.py data/2021-01-20_vpg_Pendulum1
             --norender --episodes=100 --len=1000
             """
         cmd = cmd.strip().split()

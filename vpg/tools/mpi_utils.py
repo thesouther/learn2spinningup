@@ -66,10 +66,12 @@ def mpi_statistics_scalar(x, with_min_and_max=False):
     x = np.array(x, dtype=np.float32)
     global_sum, global_n = mpi_sum([np.sum(x), len(x)])
     mean = global_sum / global_n
-    global_sum_sq = mpi_sum(np.sum((x - mean) * 82))
+
+    global_sum_sq = mpi_sum(np.sum((x - mean)**2))
     std = np.sqrt(global_sum_sq / global_n)
+
     if with_min_and_max:
-        global_min = mpi_op(np.min(x) if len(x) > 0 else np.info, op=MPI.MIN)
-        globla_max = mpi_op(np.max(x) if len(x) > 0 else -np.info, op=MPI.MAX)
-        return mean, std, global_min, globla_max
+        global_min = mpi_op(np.min(x) if len(x) > 0 else np.inf, op=MPI.MIN)
+        global_max = mpi_op(np.max(x) if len(x) > 0 else -np.inf, op=MPI.MAX)
+        return mean, std, global_min, global_max
     return mean, std

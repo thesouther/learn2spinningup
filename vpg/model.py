@@ -26,7 +26,7 @@ def mlp(sizes, activation, output_activation=nn.Identity):
     return nn.Sequential(*layers)
 
 
-def discount_sumsum(x, discount):
+def discount_cumsum(x, discount):
     """
     计算给定向量,每个元素向后的折扣累计和
     input: 
@@ -99,11 +99,14 @@ class MLPCritic(nn.Module):
 class MLPActorCritic(nn.Module):
     def __init__(self, observation_space, action_space, hidden_sizes=(64, 64), activation=nn.Tanh):
         super().__init__()
+
         obs_dim = observation_space.shape[0]
+
         if isinstance(action_space, Box):
             self.pi = MLPGaussianActor(obs_dim, action_space.shape[0], hidden_sizes, activation)
         elif isinstance(action_space, Discrete):
-            self.pi = MLPCategoricalActor(obs_dim, action_space.shape[0], hidden_sizes, hidden_sizes)
+            self.pi = MLPCategoricalActor(obs_dim, action_space.n, hidden_sizes, activation)
+
         self.v = MLPCritic(obs_dim, hidden_sizes, activation)
 
     def step(self, obs):

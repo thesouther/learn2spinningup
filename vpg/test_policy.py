@@ -7,6 +7,10 @@ import torch
 from tools.utils import EpochLogger
 from tools.config import devices
 
+#############################################################
+#只使用CPU运行
+#############################################################
+
 
 def load_policy_and_env(fpath, itr="last", deterministic=False):
     """

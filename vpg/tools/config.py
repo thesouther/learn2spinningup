@@ -10,4 +10,4 @@ DEFAULT_SHORTHAND = True
 # 使用网格调参时，等待多长时间再启动实验
 WAIT_BEFORE_LAUNCH = 5
 
-devices = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+devices = torch.device("cpu")

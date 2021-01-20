@@ -35,7 +35,7 @@ def friendly_error(err_msg):
     return "\n\n" + err_msg + "\n\n"
 
 
-def process_args(alg, args):
+def process_args(exp, args):
     def process(arg):
         """
         使用eval函数处理参数, 使得传参可以传递函数.
@@ -91,10 +91,10 @@ def process_args(alg, args):
         exp_name = arg_dict['exp_name'][0]
         del arg_dict['exp_name']
     else:
-        exp_name = "cmd_" + alg
+        exp_name = "cmd_" + exp
     # 并行执行参数, ddpg算法不需要,为了以后复制方便这里写上
     if "num_cpu" in run_kwargs and not (run_kwargs['num_cpu'] == 1):
-        assert alg in add_with_backends(MPI_COMPATIBLE_ALGOS), friendly_error("该算法不支持并行训练")
+        assert exp in MPI_COMPATIBLE_ALGOS, friendly_error("该算法不支持并行训练")
 
     valid_envs = [e.id for e in list(gym.envs.registry.all())]
     assert "env_name" in arg_dict, friendly_error("You did not give a value for --env_name!")
@@ -116,14 +116,14 @@ def process_args(alg, args):
     return exp_name, arg_dict, run_kwargs, given_shorhands
 
 
-def run_grid_search(alg, args):
+def run_grid_search(exp, args):
     """
     网格调参
     """
-
+    alg = "algorithm.%s" % exp
     run_alg = eval(alg)
 
-    exp_name, arg_dict, run_kwargs, given_shorhands = process_args(alg, args)
+    exp_name, arg_dict, run_kwargs, given_shorhands = process_args(exp, args)
     # print(run_kwargs, given_shorhands)
     eg = ExperimentGrid(name=exp_name)
     for k, v in arg_dict.items():
@@ -145,18 +145,16 @@ if __name__ == "__main__":
         # CarRacing-v0
         # LunarLander-v2
         cmd = """
-            python run.py --exp_name %s_Pendulum --env Pendulum-v0 
-                --seed 0 --data_dir data --dt
+            python run.py --exp_name %s_Pendulum1 --env Pendulum-v0
+                --seed 0 --data_dir data --dt --num_cpu 6
             """ % (exp)
-        cmd = cmd.strip().split()
-        args = cmd[2:]
-        alg = "algorithm.%s" % exp
-        run_grid_search(alg, args)
+        args = cmd.strip().split()[2:]
+        run_grid_search(exp, args)
     elif run_type == "plot":
         runfile = osp.join(osp.abspath(osp.dirname(__file__)), "tools", "plot.py")
         cmd = """
             python plot.py --savedir=results
-            data/2021
+            data/2021-01-20_vpg_Pendulum1
             """
         cmd = cmd.strip().split()
         args = [sys.executable if sys.executable else "python", runfile] + cmd[2:]
@@ -164,7 +162,7 @@ if __name__ == "__main__":
     elif run_type == "test":
         runfile = osp.join(osp.abspath(osp.dirname(__file__)), "test_policy.py")
         cmd = """
-            python test_policy.py /home/user/pro/mygithub/learn2spinningup/data/2021-01-14_ddpg_Pendulum/2021-01-14_23-07-19-ddpg_Pendulum_s0
+            python test_policy.py data/2021-01-20_vpg_Pendulum1
             --norender --episodes=100 --len=1000
             """
         cmd = cmd.strip().split()

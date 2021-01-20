@@ -11,6 +11,10 @@ from tools.mpi_pytorch import setup_pytorch_for_mpi, sync_params, mpi_avg_grads
 from tools.config import devices
 from model import count_vars, discount_cumsum, MLPActorCritic
 
+#########################################################################################
+# 只在CPU上运行
+#########################################################################################
+
 
 class VPGBuffer:
     def __init__(self, obs_dim, act_dim, size, gamma=0.99, lam=0.95):

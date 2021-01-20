@@ -7,7 +7,8 @@
 
 以下每个算法都在相应文件夹, 都可单独运行.
 
-- [ ] Vanilla Policy Gradient (VPG)
+- [X] Policy Gradient (PG)
+- [X] Vanilla Policy Gradient (VPG)
 - [ ] Trust Region Policy Optimization (TRPO)
 - [ ] Proximal Policy Optimization (PPO)
 - [ ] Deep Deterministic Policy Gradient (DDPG)

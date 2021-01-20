@@ -22,6 +22,10 @@ def mpi_fork(n, bind_to_core=False):
         sys.exit()
 
 
+def msg(m, string=""):
+    print(("Message from %d: %s \t" % (MPI.COMM_WORLD.Get_rank(), string)) + str(m))
+
+
 def proc_id():
     return MPI.COMM_WORLD.Get_rank()
 
@@ -33,6 +37,10 @@ def allreduce(*args, **kwargs):
 def num_procs():
     """返回进程数量"""
     return MPI.COMM_WORLD.Get_size()
+
+
+def broadcast(x, root=0):
+    MPI.COMM_WORLD.Bcast(x, root=root)
 
 
 def mpi_op(x, op):

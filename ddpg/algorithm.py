@@ -16,7 +16,7 @@ def ddpg(env_fn,
          actor_critc=MLPActorCritic,
          ac_kwargs=dict(),
          seed=0,
-         steps_per_epoch=4000,
+         steps_per_epoch=5000,
          epochs=100,
          replay_size=int(1e4),
          gamma=0.99,
@@ -210,7 +210,7 @@ if __name__ == "__main__":
     parser.add_argument('--l', type=int, default=2, help="模型层数")
     parser.add_argument('--gamma', type=float, default=0.99, help="折扣因子")
     parser.add_argument('--seed', type=int, default=0, help="随机数种子")
-    parser.add_argument('--epochs', type=int, default=5, help="回合数")
+    parser.add_argument('--epochs', type=int, default=50, help="回合数")
     parser.add_argument('--exp_name', type=str, default='ddpg', help="实验名称")
     args = parser.parse_args()
 

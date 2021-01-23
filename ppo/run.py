@@ -162,7 +162,7 @@ if __name__ == "__main__":
     elif run_type == "test":
         runfile = osp.join(osp.abspath(osp.dirname(__file__)), "test_policy.py")
         cmd = """
-            python test_policy.py data/2021-01-20_vpg_Pendulum1
+            python test_policy.py /home/user/pro/mygithub/learn2spinningup/data/2021-01-20_vpg_Pendulum1/2021-01-20_22-36-03-vpg_Pendulum1_s0
             --norender --episodes=100 --len=1000
             """
         cmd = cmd.strip().split()

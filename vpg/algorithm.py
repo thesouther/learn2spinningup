@@ -76,8 +76,8 @@ def vpg(env_fn,
         actor_critic=MLPActorCritic,
         ac_kwargs=dict(),
         seed=0,
-        steps_per_epoch=4000,
-        epochs=50,
+        steps_per_epoch=5000,
+        epochs=100,
         gamma=0.99,
         pi_lr=3e-4,
         vf_lr=1e-3,
@@ -318,8 +318,8 @@ if __name__ == "__main__":
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--cpu', type=int, default=4)
-    parser.add_argument('--steps', type=int, default=4000)
-    parser.add_argument('--epochs', type=int, default=50)
+    parser.add_argument('--steps', type=int, default=5000)
+    parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--exp_name', type=str, default='vpg')
     args = parser.parse_args()
 

@@ -12,7 +12,7 @@ from tools.config import devices
 from model import count_vars, discount_cumsum, MLPActorCritic
 
 
-class VPGBuffer:
+class PPOBuffer:
     def __init__(self, obs_dim, act_dim, size, gamma=0.99, lam=0.95):
         self.obs_buf = np.zeros(combined_shape(size, obs_dim), dtype=np.float32)
         self.act_buf = np.zeros(combined_shape(size, act_dim), dtype=np.float32)
@@ -38,6 +38,7 @@ class VPGBuffer:
         计算trajectory的结束点, 计算 **未来** 折扣奖励和, 并用GAE-Lambda计算优势估算值
         另外超出最大步长也算终止状态.
         """
+
         path_slice = slice(self.path_start_idx, self.ptr)
         rews = np.append(self.rew_buf[path_slice], last_val)
         vals = np.append(self.val_buf[path_slice], last_val)
@@ -68,104 +69,124 @@ class VPGBuffer:
         return {k: torch.as_tensor(v, dtype=torch.float32) for k, v in data.items()}
 
 
-def vpg(env_fn,
+def ppo(env_fn,
         actor_critic=MLPActorCritic,
+        devices=None,
         ac_kwargs=dict(),
         seed=0,
         steps_per_epoch=5000,
         epochs=100,
         gamma=0.99,
+        clip_ratio=0.2,
         pi_lr=3e-4,
         vf_lr=1e-3,
+        train_pi_iters=80,
         train_v_iters=80,
         lam=0.97,
         max_ep_len=1000,
+        target_kl=0.01,
         logger_kwargs=dict(),
         save_freq=10):
     """
-        Vanilla Policy Gradient 
+        Proximal Policy Optimization (by clipping), 
 
-        (with GAE-Lambda for advantage estimation)
+        with early stopping based on approximate KL
 
         Args:
-        env_fn : A function which creates a copy of the environment.
-            The environment must satisfy the OpenAI Gym API.
+            env_fn : A function which creates a copy of the environment.
+                The environment must satisfy the OpenAI Gym API.
 
-        actor_critic: The constructor method for a PyTorch Module with a 
-            ``step`` method, an ``act`` method, a ``pi`` module, and a ``v`` 
-            module. The ``step`` method should accept a batch of observations 
-            and return:
+            actor_critic: The constructor method for a PyTorch Module with a 
+                ``step`` method, an ``act`` method, a ``pi`` module, and a ``v`` 
+                module. The ``step`` method should accept a batch of observations 
+                and return:
 
-            ===========  ================  ======================================
-            Symbol       Shape             Description
-            ===========  ================  ======================================
-            ``a``        (batch, act_dim)  | Numpy array of actions for each 
-                                           | observation.
-            ``v``        (batch,)          | Numpy array of value estimates
-                                           | for the provided observations.
-            ``logp_a``   (batch,)          | Numpy array of log probs for the
-                                           | actions in ``a``.
-            ===========  ================  ======================================
+                ===========  ================  ======================================
+                Symbol       Shape             Description
+                ===========  ================  ======================================
+                ``a``        (batch, act_dim)  | Numpy array of actions for each 
+                                            | observation.
+                ``v``        (batch,)          | Numpy array of value estimates
+                                            | for the provided observations.
+                ``logp_a``   (batch,)          | Numpy array of log probs for the
+                                            | actions in ``a``.
+                ===========  ================  ======================================
 
-            The ``act`` method behaves the same as ``step`` but only returns ``a``.
+                The ``act`` method behaves the same as ``step`` but only returns ``a``.
 
-            The ``pi`` module's forward call should accept a batch of 
-            observations and optionally a batch of actions, and return:
+                The ``pi`` module's forward call should accept a batch of 
+                observations and optionally a batch of actions, and return:
 
-            ===========  ================  ======================================
-            Symbol       Shape             Description
-            ===========  ================  ======================================
-            ``pi``       N/A               | Torch Distribution object, containing
-                                           | a batch of distributions describing
-                                           | the policy for the provided observations.
-            ``logp_a``   (batch,)          | Optional (only returned if batch of
-                                           | actions is given). Tensor containing 
-                                           | the log probability, according to 
-                                           | the policy, of the provided actions.
-                                           | If actions not given, will contain
-                                           | ``None``.
-            ===========  ================  ======================================
+                ===========  ================  ======================================
+                Symbol       Shape             Description
+                ===========  ================  ======================================
+                ``pi``       N/A               | Torch Distribution object, containing
+                                            | a batch of distributions describing
+                                            | the policy for the provided observations.
+                ``logp_a``   (batch,)          | Optional (only returned if batch of
+                                            | actions is given). Tensor containing 
+                                            | the log probability, according to 
+                                            | the policy, of the provided actions.
+                                            | If actions not given, will contain
+                                            | ``None``.
+                ===========  ================  ======================================
 
-            The ``v`` module's forward call should accept a batch of observations
-            and return:
+                The ``v`` module's forward call should accept a batch of observations
+                and return:
 
-            ===========  ================  ======================================
-            Symbol       Shape             Description
-            ===========  ================  ======================================
-            ``v``        (batch,)          | Tensor containing the value estimates
-                                           | for the provided observations. (Critical: 
-                                           | make sure to flatten this!)
-            ===========  ================  ======================================
+                ===========  ================  ======================================
+                Symbol       Shape             Description
+                ===========  ================  ======================================
+                ``v``        (batch,)          | Tensor containing the value estimates
+                                            | for the provided observations. (Critical: 
+                                            | make sure to flatten this!)
+                ===========  ================  ======================================
 
-        ac_kwargs (dict): Any kwargs appropriate for the ActorCritic object 
-            you provided to VPG.
 
-        seed (int): Seed for random number generators.
+            ac_kwargs (dict): Any kwargs appropriate for the ActorCritic object 
+                you provided to PPO.
 
-        steps_per_epoch (int): Number of steps of interaction (state-action pairs) 
-            for the agent and the environment in each epoch.
+            seed (int): Seed for random number generators.
 
-        epochs (int): Number of epochs of interaction (equivalent to
-            number of policy updates) to perform.
+            steps_per_epoch (int): Number of steps of interaction (state-action pairs) 
+                for the agent and the environment in each epoch.
 
-        gamma (float): Discount factor. (Always between 0 and 1.)
+            epochs (int): Number of epochs of interaction (equivalent to
+                number of policy updates) to perform.
 
-        pi_lr (float): Learning rate for policy optimizer.
+            gamma (float): Discount factor. (Always between 0 and 1.)
 
-        vf_lr (float): Learning rate for value function optimizer.
+            clip_ratio (float): Hyperparameter for clipping in the policy objective.
+                Roughly: how far can the new policy go from the old policy while 
+                still profiting (improving the objective function)? The new policy 
+                can still go farther than the clip_ratio says, but it doesn't help
+                on the objective anymore. (Usually small, 0.1 to 0.3.) Typically
+                denoted by :math:`\epsilon`. 
 
-        train_v_iters (int): Number of gradient descent steps to take on 
-            value function per epoch.
+            pi_lr (float): Learning rate for policy optimizer.
 
-        lam (float): Lambda for GAE-Lambda. (Always between 0 and 1,
-            close to 1.)
+            vf_lr (float): Learning rate for value function optimizer.
 
-        max_ep_len (int): Maximum length of trajectory / episode / rollout.
+            train_pi_iters (int): Maximum number of gradient descent steps to take 
+                on policy loss per epoch. (Early stopping may cause optimizer
+                to take fewer than this.)
 
-        logger_kwargs (dict): Keyword args for EpochLogger.
+            train_v_iters (int): Number of gradient descent steps to take on 
+                value function per epoch.
 
-        save_freq (int): How often (in terms of gap between epochs) to save
-            the current policy and value function.
+            lam (float): Lambda for GAE-Lambda. (Always between 0 and 1,
+                close to 1.)
+
+            max_ep_len (int): Maximum length of trajectory / episode / rollout.
+
+            target_kl (float): Roughly what KL divergence we think is appropriate
+                between new and old policies after an update. This will get used 
+                for early stopping. (Usually small, 0.01 or 0.05.)
+
+            logger_kwargs (dict): Keyword args for EpochLogger.
+
+            save_freq (int): How often (in terms of gap between epochs) to save
+                the current policy and value function.
 
     """
     #避免Pytorch+MPI造成训练降速
@@ -192,17 +213,21 @@ def vpg(env_fn,
     logger.log("\nNumber of parameters: \t pi: %d, \t v: %d\n" % var_counts)
 
     local_steps_per_epoch = int(steps_per_epoch / num_procs())
-    buf = VPGBuffer(obs_dim, act_dim, local_steps_per_epoch, gamma, lam)
+    buf = PPOBuffer(obs_dim, act_dim, local_steps_per_epoch, gamma, lam)
 
     def compute_loss_pi(data):
         obs, act, adv, logp_old = data['obs'], data['act'], data['adv'], data['logp']
 
         pi, logp = ac.pi(obs, act)
-        loss_pi = -(logp * adv).mean()
+        ratio = torch.exp(logp - logp_old)
+        clip_adv = torch.clamp(ratio, 1 - clip_ratio, 1 + clip_ratio) * adv
+        loss_pi = -(torch.min(ratio * adv, clip_adv)).mean()
 
         approx_kl = (logp_old - logp).mean().item()
         ent = pi.entropy().mean().item()
-        pi_info = dict(kl=approx_kl, ent=ent)
+        clipped = ratio.gt(1 + clip_ratio) | ratio.lt(1 - clip_ratio)
+        clipfrac = torch.as_tensor(clipped, dtype=torch.float32).mean().item()
+        pi_info = dict(kl=approx_kl, ent=ent, cf=clipfrac)
 
         return loss_pi, pi_info
 
@@ -223,15 +248,21 @@ def vpg(env_fn,
         pi_l_old = pi_l_old.item()
         v_l_old = compute_loss_v(data).item()
 
-        # 梯度下降
-        pi_optimizer.zero_grad()
-        loss_pi, pi_info = compute_loss_pi(data)
-        loss_pi.backward()
-        mpi_avg_grads(ac.pi)
-        pi_optimizer.step()
+        # 多步梯度下降训练policy
+        for i in range(train_pi_iters):
+            pi_optimizer.zero_grad()
+            loss_pi, pi_info = compute_loss_pi(data)
+            kl = mpi_avg(pi_info["kl"])
+            if kl > 1.5 * target_kl:
+                logger.log("Early stopping at step %d due to reaching max kl." % i)
+                break
+            loss_pi.backward()
+            mpi_avg_grads(ac.pi)
+            pi_optimizer.step()
+
+        logger.store(StopIter=i)
 
         # Value functoin learning
-        loss_v = 0
         for i in range(train_v_iters):
             vf_optimizer.zero_grad()
             loss_v = compute_loss_v(data)
@@ -240,11 +271,12 @@ def vpg(env_fn,
             vf_optimizer.step()
 
         # 记录更新
-        kl, ent = pi_info["kl"], pi_info_old["ent"]
+        kl, ent, cf = pi_info["kl"], pi_info_old["ent"], pi_info["cf"]
         logger.store(LossPi=pi_l_old,
                      LossV=v_l_old,
                      KL=kl,
                      Entropy=ent,
+                     ClipFrac=cf,
                      DeltaLossPi=(loss_pi.item() - pi_l_old),
                      DeltaLossV=(loss_v.item() - v_l_old))
 
@@ -301,6 +333,8 @@ def vpg(env_fn,
         logger.log_tabular('DeltaLossV', average_only=True)
         logger.log_tabular('Entropy', average_only=True)
         logger.log_tabular('KL', average_only=True)
+        logger.log_tabular('ClipFrac', average_only=True)
+        logger.log_tabular('StopIter', average_only=True)
         logger.log_tabular('Time', time.time() - start_time)
         logger.dump_tabular()
 
@@ -316,16 +350,23 @@ if __name__ == "__main__":
     parser.add_argument('--cpu', type=int, default=4)
     parser.add_argument('--steps', type=int, default=5000)
     parser.add_argument('--epochs', type=int, default=100)
-    parser.add_argument('--exp_name', type=str, default='vpg')
+    parser.add_argument('--exp_name', type=str, default='ppo')
+    parser.add_argument('--use_gpu', '-ug', action='store_true')
     args = parser.parse_args()
+
+    if args.use_gpu:
+        devices = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    else:
+        devices = torch.device("cpu")
 
     mpi_fork(args.cpu)  # run parallel code with mpi
 
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    vpg(lambda: gym.make(args.env),
+    ppo(lambda: gym.make(args.env),
         actor_critic=MLPActorCritic,
+        devices=devices,
         ac_kwargs=dict(hidden_sizes=[args.hid] * args.l),
         gamma=args.gamma,
         seed=args.seed,

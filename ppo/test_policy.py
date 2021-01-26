@@ -5,14 +5,13 @@ import os.path as osp
 from joblib import logger
 import torch
 from tools.utils import EpochLogger
-from tools.config import devices
 
 #############################################################
 #只使用CPU运行
 #############################################################
 
 
-def load_policy_and_env(fpath, itr="last", deterministic=False):
+def load_policy_and_env(fpath, itr="last", deterministic=False, devices=None):
     """
     载入环境和模型, 只用pytorch模型,没有tf实现
     """
@@ -25,7 +24,7 @@ def load_policy_and_env(fpath, itr="last", deterministic=False):
     else:
         assert isinstance(itr, int), "Bad value provided for itr (needs to be int or 'last')."
         itr = "%d" % itr
-    get_action = load_pytorch_policy(fpath, itr, deterministic)
+    get_action = load_pytorch_policy(fpath, itr, deterministic, devices)
     try:
         state = joblib.load(osp.join(fpath, 'vars' + itr + '.pkl'))
         env = state["env"]
@@ -35,7 +34,7 @@ def load_policy_and_env(fpath, itr="last", deterministic=False):
     return env, get_action
 
 
-def load_pytorch_policy(fpath, itr, deterministic=False):
+def load_pytorch_policy(fpath, itr, deterministic=False, devices=None):
     fname = osp.join(fpath, "pyt_save", "model" + itr + ".pt")
     print("\n\nloading from %s.\n\n" % fname)
     model = torch.load(fname)
@@ -87,7 +86,16 @@ if __name__ == "__main__":
     parser.add_argument('--norender', '-nr', action='store_true')
     parser.add_argument('--itr', '-i', type=int, default=-1)
     parser.add_argument('--deterministic', '-d', action='store_true')
+    parser.add_argument('--use_gpu', '-ug', action='store_true')
     args = parser.parse_args()
-    env, get_action = load_policy_and_env(args.fpath, args.itr if args.itr >= 0 else "last",
-                                          args.deterministic)
+
+    if args.use_gpu:
+        devices = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    else:
+        devices = torch.device("cpu")
+
+    env, get_action = load_policy_and_env(args.fpath,
+                                          args.itr if args.itr >= 0 else "last",
+                                          args.deterministic,
+                                          devices=devices)
     run_policy(env, get_action, args.len, args.episodes, not (args.norender))

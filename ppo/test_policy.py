@@ -6,10 +6,6 @@ from joblib import logger
 import torch
 from tools.utils import EpochLogger
 
-#############################################################
-#只使用CPU运行
-#############################################################
-
 
 def load_policy_and_env(fpath, itr="last", deterministic=False, devices=None):
     """

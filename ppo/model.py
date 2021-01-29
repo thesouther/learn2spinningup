@@ -7,10 +7,9 @@ import torch
 import torch.nn as nn
 from torch.distributions.normal import Normal
 from torch.distributions.categorical import Categorical
-from tools.config import devices
 
 
-def return_numpy(a):
+def return_numpy(a, devices):
     return a.cpu().numpy() if devices.type == 'cuda' else a.numpy()
 
 
@@ -97,10 +96,16 @@ class MLPCritic(nn.Module):
 
 
 class MLPActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, hidden_sizes=(64, 64), activation=nn.Tanh):
+    def __init__(self,
+                 observation_space,
+                 action_space,
+                 hidden_sizes=(64, 64),
+                 activation=nn.Tanh,
+                 devices=None):
         super().__init__()
 
         obs_dim = observation_space.shape[0]
+        self.devices = devices
 
         if isinstance(action_space, Box):
             self.pi = MLPGaussianActor(obs_dim, action_space.shape[0], hidden_sizes, activation)
@@ -115,7 +120,8 @@ class MLPActorCritic(nn.Module):
             a = pi.sample()
             logp_a = self.pi._log_prob_from_distribution(pi, a)
             v = self.v(obs)
-        return return_numpy(a), return_numpy(v), return_numpy(logp_a)
+        return return_numpy(a, self.devices), return_numpy(v,
+                                                           self.devices), return_numpy(logp_a, self.devices)
 
     def act(self, obs):
         return self.step(obs)[0]

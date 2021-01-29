@@ -124,11 +124,10 @@ def run_grid_search(exp, args):
     run_alg = eval(alg)
 
     exp_name, arg_dict, run_kwargs, given_shorhands = process_args(exp, args)
-    # print(run_kwargs, given_shorhands)
+    print(arg_dict, run_kwargs, given_shorhands)
     eg = ExperimentGrid(name=exp_name)
     for k, v in arg_dict.items():
         eg.add(k, v, shorthand=given_shorhands.get(k))
-    # print(eg.variants())
     eg.run(run_alg, **run_kwargs)
 
 
@@ -146,7 +145,7 @@ if __name__ == "__main__":
         # LunarLander-v2
         cmd = """
             python run.py --exp_name %s_Pendulum1 --env Pendulum-v0
-                --seed 0 --data_dir data --dt --num_cpu 6
+                --seed 0 --data_dir data --dt --num_cpu 1 --use_gpu True
             """ % (exp)
         args = cmd.strip().split()[2:]
         run_grid_search(exp, args)
@@ -154,7 +153,7 @@ if __name__ == "__main__":
         runfile = osp.join(osp.abspath(osp.dirname(__file__)), "tools", "plot.py")
         cmd = """
             python plot.py --savedir=results
-            data/2021-01-20_vpg_Pendulum1
+            data/2021-01-29_ppo_Pendulum1
             """
         cmd = cmd.strip().split()
         args = [sys.executable if sys.executable else "python", runfile] + cmd[2:]
@@ -162,8 +161,8 @@ if __name__ == "__main__":
     elif run_type == "test":
         runfile = osp.join(osp.abspath(osp.dirname(__file__)), "test_policy.py")
         cmd = """
-            python test_policy.py /home/user/pro/mygithub/learn2spinningup/data/2021-01-20_vpg_Pendulum1/2021-01-20_22-36-03-vpg_Pendulum1_s0
-            --norender --episodes=100 --len=1000
+            python test_policy.py /home/user/pro/mygithub/learn2spinningup/data/2021-01-29_ppo_Pendulum1/2021-01-29_11-47-46-ppo_Pendulum1_s0
+            --norender --episodes=100 --len=1000 --use_gpu
             """
         cmd = cmd.strip().split()
         args = [sys.executable if sys.executable else "python", runfile] + cmd[2:]

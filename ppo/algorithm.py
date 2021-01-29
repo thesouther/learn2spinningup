@@ -52,7 +52,7 @@ class PPOBuffer:
 
         self.path_start_idx = self.ptr
 
-    def get(self):
+    def get(self, devices):
         """
         每个episode结束， 调用该函数从buffer里获取用优势函数normalized(0均值std=1)的数据.
         同时, resets buffer的ptr
@@ -66,16 +66,16 @@ class PPOBuffer:
                     ret=self.ret_buf,
                     adv=self.adv_buf,
                     logp=self.logp_buf)
-        return {k: torch.as_tensor(v, dtype=torch.float32) for k, v in data.items()}
+        return {k: torch.as_tensor(v, dtype=torch.float32).to(devices) for k, v in data.items()}
 
 
 def ppo(env_fn,
         actor_critic=MLPActorCritic,
-        devices=None,
+        use_gpu=False,
         ac_kwargs=dict(),
         seed=0,
         steps_per_epoch=5000,
-        epochs=100,
+        epochs=200,
         gamma=0.99,
         clip_ratio=0.2,
         pi_lr=3e-4,
@@ -189,6 +189,11 @@ def ppo(env_fn,
                 the current policy and value function.
 
     """
+    if use_gpu:
+        devices = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        print("\nusing GPU\n")
+    else:
+        devices = torch.device("cpu")
     #避免Pytorch+MPI造成训练降速
     setup_pytorch_for_mpi()
 
@@ -203,9 +208,9 @@ def ppo(env_fn,
     env = env_fn()
     obs_dim = env.observation_space.shape
     act_dim = env.action_space.shape
-    print("obs_dim, act_dim: ", env.observation_space, env.action_space.shape)
+    # print("obs_dim, act_dim: ", env.observation_space, env.action_space.shape)
 
-    ac = actor_critic(env.observation_space, env.action_space, **ac_kwargs)
+    ac = actor_critic(env.observation_space, env.action_space, devices=devices, **ac_kwargs).to(devices)
 
     sync_params(ac)
 
@@ -241,7 +246,7 @@ def ppo(env_fn,
     logger.setup_pytorch_saver(ac)
 
     def update():
-        data = buf.get()
+        data = buf.get(devices)
 
         # 计算loss
         pi_l_old, pi_info_old = compute_loss_pi(data)
@@ -285,7 +290,7 @@ def ppo(env_fn,
 
     for epoch in range(epochs):
         for t in range(local_steps_per_epoch):
-            a, v, logp = ac.step(torch.as_tensor(o, dtype=torch.float32))
+            a, v, logp = ac.step(torch.as_tensor(o, dtype=torch.float32).to(devices))
 
             next_o, r, d, _ = env.step(a)
             ep_ret += r
@@ -305,7 +310,7 @@ def ppo(env_fn,
                     print("Warning: trajectory cut off by epoch at %d steps." % ep_len, flush=True)
                 # if trajectory didn't reach terminal state, bootstrap value target
                 if timeout or epoch_ended:
-                    _, v, _ = ac.step(torch.as_tensor(o, dtype=torch.float32))
+                    _, v, _ = ac.step(torch.as_tensor(o, dtype=torch.float32).to(devices))
                 else:
                     v = 0
                 buf.finish_path(v)
@@ -351,13 +356,8 @@ if __name__ == "__main__":
     parser.add_argument('--steps', type=int, default=5000)
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--exp_name', type=str, default='ppo')
-    parser.add_argument('--use_gpu', '-ug', action='store_true')
+    parser.add_argument('--use_gpu', type=bool, default=False)
     args = parser.parse_args()
-
-    if args.use_gpu:
-        devices = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    else:
-        devices = torch.device("cpu")
 
     mpi_fork(args.cpu)  # run parallel code with mpi
 
@@ -366,7 +366,7 @@ if __name__ == "__main__":
 
     ppo(lambda: gym.make(args.env),
         actor_critic=MLPActorCritic,
-        devices=devices,
+        use_gpu=args.use_gpu,
         ac_kwargs=dict(hidden_sizes=[args.hid] * args.l),
         gamma=args.gamma,
         seed=args.seed,

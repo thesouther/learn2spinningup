@@ -21,12 +21,21 @@ from .mpi_utils import mpi_fork
 DIV_LINE_WIDTH = 80
 
 
-def call_experiment(exp_name, thunk, seed=0, num_cpu=1, data_dir=None, datestamp=False, **kwargs):
+def call_experiment(
+        exp_name,
+        thunk,
+        seed=0,
+        num_cpu=1,
+        data_dir=None,
+        datestamp=False,
+        # use_gpu=False,
+        **kwargs):
     """
     使用超参数和configuration运行函数
     """
     num_cpu = psutil.cpu_count(logical=False) if num_cpu == "auto" else num_cpu
     kwargs["seed"] = seed
+    # kwargs["use_gpu"] = use_gpu
     print(colorize("Running experiment:\n", color="cyan", bold=True))
     print(exp_name + "\n")
     print(colorize("with kwargs:\n", color="cyan", bold=True))
@@ -49,7 +58,6 @@ def call_experiment(exp_name, thunk, seed=0, num_cpu=1, data_dir=None, datestamp
         mpi_fork(num_cpu)
         thunk(**kwargs)
 
-    # thunk_plus()
     pickled_thunk = cloudpickle.dumps(thunk_plus)
     encoded_thunk = base64.b64encode(zlib.compress(pickled_thunk)).decode("utf-8")
     # 获取上一层目录下的 run_entrypoint.py 文件
@@ -299,7 +307,14 @@ class ExperimentGrid:
         new_variants = [unflatten_var(var) for var in flat_variants]
         return new_variants
 
-    def run(self, thunk, num_cpu=1, data_dir=None, datestamp=False):
+    def run(
+        self,
+        thunk,
+        num_cpu=1,
+        data_dir=None,
+        datestamp=False,
+        # use_gpu=False
+    ):
         """
         使用'thunk'函数运行grid中每一个变量.
         'thunk' 必须是可调用函数或者字符串, 如果是string, 必须是参数的名字, 其值都是可调用函数.
@@ -347,12 +362,14 @@ class ExperimentGrid:
             else:
                 thunk_ = thunk
 
-            call_experiment(exp_name=exp_name,
-                            thunk=thunk_,
-                            num_cpu=num_cpu,
-                            data_dir=data_dir,
-                            datestamp=datestamp,
-                            **var)
+            call_experiment(
+                exp_name=exp_name,
+                thunk=thunk_,
+                num_cpu=num_cpu,
+                data_dir=data_dir,
+                datestamp=datestamp,
+                # use_gpu=use_gpu,
+                **var)
 
 
 def test_eg():
